@@ -1,0 +1,264 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Clawstrophobia — Simulation</title>
+  <style>
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      background: #0d0d12;
+      color: #e8e6e3;
+      font-family: system-ui, -apple-system, sans-serif;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 1rem;
+    }
+    h1 { margin: 0 0 0.5rem; font-size: 1.25rem; }
+    .sub {
+      color: #9ca3af;
+      font-size: 0.875rem;
+      margin-bottom: 1rem;
+    }
+    .controls {
+      display: flex;
+      gap: 0.5rem;
+      align-items: center;
+      flex-wrap: wrap;
+      margin-bottom: 1rem;
+    }
+    .controls button {
+      padding: 0.5rem 1rem;
+      border-radius: 6px;
+      border: none;
+      font-weight: 600;
+      cursor: pointer;
+      background: #4f46e5;
+      color: white;
+    }
+    .controls button:hover { background: #4338ca; }
+    .controls button.secondary { background: rgba(255,255,255,0.15); color: #e8e6e3; }
+    .controls button.secondary:hover { background: rgba(255,255,255,0.25); }
+    .controls button:disabled { opacity: 0.5; cursor: not-allowed; }
+    .status {
+      font-size: 0.9rem;
+      margin-bottom: 0.5rem;
+    }
+    .status strong { color: #f59e0b; }
+    .wrap {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 0.5rem;
+    }
+    #grid {
+      display: grid;
+      gap: 0;
+      border: 2px solid rgba(255,255,255,0.15);
+      border-radius: 8px;
+      overflow: hidden;
+      width: min(90vmin, 420px);
+      height: min(90vmin, 420px);
+    }
+    #grid .cell {
+      aspect-ratio: 1;
+      border: 1px solid rgba(255,255,255,0.05);
+      transition: background 0.15s ease, opacity 0.15s ease;
+    }
+    #grid .cell.outside {
+      background: rgba(0,0,0,0.5);
+      opacity: 0.4;
+    }
+    #grid .cell.playable {
+      background: rgba(34, 197, 94, 0.2);
+    }
+    #grid .cell.danger {
+      background: rgba(245, 158, 11, 0.4);
+      animation: blink 0.8s ease-in-out infinite;
+    }
+    #grid .cell.winner {
+      background: rgba(34, 197, 94, 0.8);
+      animation: pulse 1s ease-in-out infinite;
+    }
+    @keyframes blink {
+      0%, 100% { opacity: 1; box-shadow: inset 0 0 0 2px #f59e0b; }
+      50% { opacity: 0.6; box-shadow: inset 0 0 0 4px #fbbf24; }
+    }
+    @keyframes pulse {
+      0%, 100% { transform: scale(1); }
+      50% { transform: scale(1.05); }
+    }
+    .legend {
+      display: flex;
+      gap: 1rem;
+      font-size: 0.75rem;
+      color: #9ca3af;
+    }
+    .legend span { display: flex; align-items: center; gap: 0.35rem; }
+    .legend .swatch { width: 10px; height: 10px; border-radius: 2px; }
+    .legend .swatch.danger { background: rgba(245,158,11,0.6); }
+    .legend .swatch.playable { background: rgba(34,197,94,0.3); }
+    .legend .swatch.outside { background: rgba(0,0,0,0.5); }
+    .toast {
+      position: fixed;
+      bottom: 2rem;
+      left: 50%;
+      transform: translateX(-50%);
+      background: #1a1a22;
+      border: 1px solid rgba(255,255,255,0.2);
+      padding: 0.75rem 1.5rem;
+      border-radius: 8px;
+      font-weight: 600;
+      animation: fadeIn 0.3s ease;
+    }
+    @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+  </style>
+</head>
+<body>
+  <h1>Clawstrophobia — Simulation</h1>
+  <p class="sub">One edge at a time: 1=top, 2=right, 3=bottom, 4=left. Blinking = danger zone.</p>
+  <div class="controls">
+    <button type="button" id="btnStart">Start</button>
+    <button type="button" id="btnStop" class="secondary" disabled>Stop</button>
+    <button type="button" id="btnStep" class="secondary">Step once</button>
+    <label>
+      Speed: <input type="range" id="speed" min="200" max="2000" value="800" step="100" />
+      <span id="speedVal">800</span> ms
+    </label>
+  </div>
+  <div class="status" id="status">Bounds: 0–29 × 0–29 &nbsp;|&nbsp; Next edge: random 1–4</div>
+  <div class="wrap">
+    <div id="grid"></div>
+    <div class="legend">
+      <span><span class="swatch danger"></span> Danger (blinks)</span>
+      <span><span class="swatch playable"></span> Playable</span>
+      <span><span class="swatch outside"></span> Removed</span>
+    </div>
+  </div>
+
+  <script>
+    const GRID = 30;
+    let minX = 0, maxX = GRID - 1, minY = 0, maxY = GRID - 1;
+    let timer = null;
+    let lastEdge = null;
+
+    const gridEl = document.getElementById('grid');
+    const statusEl = document.getElementById('status');
+    const btnStart = document.getElementById('btnStart');
+    const btnStop = document.getElementById('btnStop');
+    const btnStep = document.getElementById('btnStep');
+    const speedInput = document.getElementById('speed');
+    const speedVal = document.getElementById('speedVal');
+
+    function buildGrid() {
+      gridEl.style.gridTemplateColumns = `repeat(${GRID}, 1fr)`;
+      gridEl.style.gridTemplateRows = `repeat(${GRID}, 1fr)`;
+      gridEl.innerHTML = '';
+      for (let y = 0; y < GRID; y++) {
+        for (let x = 0; x < GRID; x++) {
+          const cell = document.createElement('div');
+          cell.className = 'cell';
+          cell.dataset.x = x;
+          cell.dataset.y = y;
+          gridEl.appendChild(cell);
+        }
+      }
+    }
+
+    function isPlayable(x, y) {
+      return x >= minX && x <= maxX && y >= minY && y <= maxY;
+    }
+
+    function isDanger(x, y) {
+      if (!isPlayable(x, y)) return false;
+      if (minX === maxX && minY === maxY) return false;
+      return x === minX || x === maxX || y === minY || y === maxY;
+    }
+
+    function paint() {
+      const cells = gridEl.querySelectorAll('.cell');
+      cells.forEach((cell) => {
+        const x = parseInt(cell.dataset.x, 10);
+        const y = parseInt(cell.dataset.y, 10);
+        cell.classList.remove('outside', 'playable', 'danger', 'winner');
+        if (!isPlayable(x, y)) {
+          cell.classList.add('outside');
+        } else {
+          cell.classList.add('playable');
+          if (isDanger(x, y)) cell.classList.add('danger');
+          if (minX === maxX && minY === maxY && x === minX && y === minY) cell.classList.add('winner');
+        }
+      });
+      statusEl.innerHTML = `Bounds: ${minX}–${maxX} × ${minY}–${maxY}${lastEdge ? ` &nbsp;|&nbsp; Last removed: <strong>${['', 'top', 'right', 'bottom', 'left'][lastEdge]}</strong>` : ' &nbsp;|&nbsp; Next edge: random 1–4'}`;
+    }
+
+    function removeOneEdge() {
+      if (minX === maxX && minY === maxY) {
+        showToast('Winner cell! Restart to play again.');
+        stop();
+        return;
+      }
+      // Only remove an edge that still has room (so we reach 1x1, not 5x1 etc.)
+      const valid = [];
+      if (minY < maxY) { valid.push(1); valid.push(3); } // top, bottom
+      if (minX < maxX) { valid.push(2); valid.push(4); } // right, left
+      const r = valid[Math.floor(Math.random() * valid.length)];
+      lastEdge = r;
+      if (r === 1) minY++;
+      else if (r === 2) maxX--;
+      else if (r === 3) maxY--;
+      else minX++;
+      paint();
+    }
+
+    function showToast(msg) {
+      const el = document.createElement('div');
+      el.className = 'toast';
+      el.textContent = msg;
+      document.body.appendChild(el);
+      setTimeout(() => el.remove(), 2500);
+    }
+
+    function start() {
+      if (timer) return;
+      const ms = parseInt(speedInput.value, 10);
+      timer = setInterval(removeOneEdge, ms);
+      btnStart.disabled = true;
+      btnStop.disabled = false;
+    }
+
+    function stop() {
+      if (timer) clearInterval(timer);
+      timer = null;
+      btnStart.disabled = false;
+      btnStop.disabled = true;
+    }
+
+    function reset() {
+      minX = 0;
+      maxX = GRID - 1;
+      minY = 0;
+      maxY = GRID - 1;
+      lastEdge = null;
+      paint();
+    }
+
+    btnStart.addEventListener('click', () => { reset(); start(); });
+    btnStop.addEventListener('click', stop);
+    btnStep.addEventListener('click', () => { reset(); removeOneEdge(); });
+    speedInput.addEventListener('input', () => {
+      speedVal.textContent = speedInput.value;
+      if (timer) {
+        stop();
+        start();
+      }
+    });
+
+    buildGrid();
+    paint();
+  </script>
+</body>
+</html>

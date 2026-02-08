@@ -1,0 +1,18 @@
+# Foundry
+lib/
+out/
+cache/
+broadcast/
+
+# Env
+.env
+.env.local
+*.env
+
+# Web
+web/node_modules/
+web/dist/
+
+# IDE
+.idea/
+.vscode/
