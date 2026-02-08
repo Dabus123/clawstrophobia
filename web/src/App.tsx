@@ -152,7 +152,7 @@ function App() {
     <div className="grid-wrap">
       <header className="header">
         <h1>Clawstrophobia</h1>
-        <a href="/simulation.html" target="_blank" rel="noopener noreferrer" style={{ fontSize: '0.875rem', color: '#9ca3af' }}>
+        <a href="/simulation/" target="_blank" rel="noopener noreferrer" style={{ fontSize: '0.875rem', color: '#9ca3af' }}>
           Simulation
         </a>
       </header>
